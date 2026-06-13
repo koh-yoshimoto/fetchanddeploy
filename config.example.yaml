@@ -1,0 +1,26 @@
+# fetchanddeploy 設定ファイル例
+# リバースプロキシ（nginx/Caddy）配下でHTTPを待ち受ける想定。
+
+listen: ":9000"      # 待受アドレス
+path: "/webhook"      # webhookを受け付けるパス
+log_file: "/var/log/fetchanddeploy.log"  # 任意。空ならstdoutのみ
+
+repositories:
+  - name: "koh-yoshimoto/myapp"   # GitHubのリポジトリフルネーム（owner/repo）
+    branch: "main"                  # 反応するブランチ。空なら全ブランチ
+    path: "/var/www/myapp"          # デプロイコマンドを実行する作業ディレクトリ
+    secret: "ここにwebhookのSecretを設定"  # GitHub webhook の Secret
+    timeout: 5m                     # デプロイ全体のタイムアウト（0なら無制限）
+    deploy:                          # pull→デプロイのため順次実行するコマンド
+      - "git fetch --all --prune"
+      - "git reset --hard origin/main"
+      - "docker compose up -d --build"
+
+  - name: "koh-yoshimoto/another"
+    branch: "production"
+    path: "/srv/another"
+    secret: "別のSecret"
+    deploy:
+      - "git pull --ff-only"
+      - "make deploy"
+      # コマンド内では $FAD_REPO / $FAD_BRANCH / $FAD_COMMIT が参照できる

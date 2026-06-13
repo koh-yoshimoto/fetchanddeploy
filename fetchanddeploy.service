@@ -1,0 +1,20 @@
+[Unit]
+Description=fetchanddeploy - GitHub webhook deploy listener
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 必要に応じて専用ユーザーに変更（git/docker操作の権限に注意）
+User=deploy
+ExecStart=/usr/local/bin/fetchanddeploy -config /etc/fetchanddeploy/config.yaml
+Restart=on-failure
+RestartSec=5s
+
+# セキュリティ強化（環境に合わせて調整）
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
