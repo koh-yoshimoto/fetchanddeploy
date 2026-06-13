@@ -1,36 +1,38 @@
 # fetchanddeploy
 
-GitHub の push を webhook で受け取り、対象リポジトリを pull して任意のデプロイコマンドを実行するワンバイナリツール。VPS 等での自動デプロイ用。
+English | [日本語](README-ja.md)
 
-- 単一バイナリ（Go）で動作。配布が簡単
-- 複数リポジトリを1プロセスで処理
-- `X-Hub-Signature-256`（HMAC-SHA256）で署名検証
-- リポジトリ単位の排他ロックでデプロイ重複を防止
-- GitHub の 10 秒タイムアウトを避けるため即時 202 応答 → デプロイは非同期実行
+A single-binary tool that receives GitHub push events via webhook, pulls the target repository, and runs arbitrary deploy commands. Intended for automated deployment on a VPS and similar setups.
 
-## ビルド
+- Runs as a single Go binary — easy to distribute
+- Handles multiple repositories in one process
+- Verifies signatures with `X-Hub-Signature-256` (HMAC-SHA256)
+- Per-repository mutex prevents overlapping deploys
+- Responds with `202` immediately to avoid GitHub's 10-second timeout, then deploys asynchronously
+
+## Build
 
 ```sh
 go build -o fetchanddeploy .
-# バージョン埋め込み:
+# Embed a version:
 go build -ldflags "-X main.version=$(git describe --tags --always)" -o fetchanddeploy .
 
-# Linux VPS 向けクロスコンパイル（macOSから）:
+# Cross-compile for a Linux VPS (from macOS):
 GOOS=linux GOARCH=amd64 go build -o fetchanddeploy .
 ```
 
-## 設定
+## Configuration
 
-`config.example.yaml` をコピーして編集する。
+Copy `config.example.yaml` and edit it.
 
 ```yaml
 listen: ":9000"
 path: "/webhook"
 repositories:
-  - name: "owner/repo"          # GitHubのフルネーム
-    branch: "main"               # 反応するブランチ（空=全ブランチ）
-    path: "/var/www/app"         # 作業ディレクトリ
-    secret: "webhookのSecret"
+  - name: "owner/repo"          # GitHub full name
+    branch: "main"               # branch to react to (empty = all branches)
+    path: "/var/www/app"         # working directory
+    secret: "your webhook secret"
     timeout: 5m
     deploy:
       - "git fetch --all --prune"
@@ -38,28 +40,28 @@ repositories:
       - "docker compose up -d --build"
 ```
 
-デプロイコマンド内では以下の環境変数が使える: `FAD_REPO` / `FAD_BRANCH` / `FAD_COMMIT`。
+The following environment variables are available inside deploy commands: `FAD_REPO` / `FAD_BRANCH` / `FAD_COMMIT`.
 
-## 起動
+## Running
 
 ```sh
 ./fetchanddeploy -config /etc/fetchanddeploy/config.yaml
 ```
 
-`-version` でバージョン表示。`/healthz` でヘルスチェック可能。
+Use `-version` to print the version. `/healthz` is available for health checks.
 
-## GitHub 側の設定
+## GitHub setup
 
-リポジトリの **Settings → Webhooks → Add webhook**:
+In the repository, go to **Settings → Webhooks → Add webhook**:
 
 - Payload URL: `https://your-domain/webhook`
 - Content type: `application/json`
-- Secret: 設定ファイルの `secret` と同じ値
-- イベント: **Just the push event**
+- Secret: the same value as `secret` in the config file
+- Events: **Just the push event**
 
-## リバースプロキシ（nginx 例）
+## Reverse proxy (nginx example)
 
-本ツールは HTTP のみ。TLS 終端はプロキシ側で行う。
+This tool serves HTTP only. Terminate TLS at the proxy.
 
 ```nginx
 location /webhook {
@@ -70,20 +72,20 @@ location /webhook {
 
 ## systemd
 
-`fetchanddeploy.service` を `/etc/systemd/system/` に置く。
+Place `fetchanddeploy.service` in `/etc/systemd/system/`.
 
 ```sh
 sudo cp fetchanddeploy /usr/local/bin/
 sudo mkdir -p /etc/fetchanddeploy
-sudo cp config.example.yaml /etc/fetchanddeploy/config.yaml  # 編集する
+sudo cp config.example.yaml /etc/fetchanddeploy/config.yaml  # then edit it
 sudo cp fetchanddeploy.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now fetchanddeploy
 sudo journalctl -u fetchanddeploy -f
 ```
 
-## 注意
+## Notes
 
-- 初回は対象 `path` に対象リポジトリを git clone 済みにしておくこと（本ツールは clone は行わず、設定の deploy コマンドを実行するだけ）。
-- pull に SSH を使う場合、サービス実行ユーザーの SSH 鍵 / known_hosts を用意する。
-- deploy コマンドは `/bin/sh -c` で実行されるため、設定ファイルの取り扱いに注意（任意コマンド実行になる）。
+- The target `path` must already contain a git clone of the repository (this tool does not clone — it only runs the configured deploy commands).
+- If you pull over SSH, provide the SSH key / known_hosts for the service user.
+- Deploy commands run via `/bin/sh -c`, so treat the config file carefully (it allows arbitrary command execution).
