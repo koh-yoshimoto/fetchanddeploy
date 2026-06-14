@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 const maxBodyBytes = 25 << 20 // GitHubのpayloadは最大25MB
@@ -30,12 +32,13 @@ type pushPayload struct {
 type Handler struct {
 	cfg      *Config
 	deployer *Deployer
+	notifier *Notifier
 	// locks はリポジトリ単位の排他ロック。同一リポジトリのデプロイ重複を防ぐ。
 	locks sync.Map
 }
 
-func NewHandler(cfg *Config, d *Deployer) *Handler {
-	return &Handler{cfg: cfg, deployer: d}
+func NewHandler(cfg *Config, d *Deployer, n *Notifier) *Handler {
+	return &Handler{cfg: cfg, deployer: d, notifier: n}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -103,18 +106,36 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, "accepted")
 }
 
-// runDeploy はリポジトリ単位ロックを取りデプロイを実行する。
+// runDeploy はリポジトリ単位ロックを取りデプロイを実行し、結果を通知する。
 func (h *Handler) runDeploy(repo *Repository, branch, commit string) {
 	muIface, _ := h.locks.LoadOrStore(repo.Name, &sync.Mutex{})
 	mu := muIface.(*sync.Mutex)
 	mu.Lock()
 	defer mu.Unlock()
 
-	if err := h.deployer.Run(repo, branch, commit); err != nil {
+	start := time.Now()
+	err := h.deployer.Run(repo, branch, commit)
+	dur := time.Since(start)
+	if err != nil {
 		log.Printf("%s: デプロイ失敗: %v", repo.Name, err)
+	} else {
+		log.Printf("%s: デプロイ完了 (%s)", repo.Name, dur.Round(time.Millisecond))
+	}
+
+	h.notify(DeployResult{Repo: repo.Name, Branch: branch, Commit: commit, Err: err, Duration: dur}, repo)
+}
+
+// notify はデプロイ結果を通知する（設定があれば）。失敗してもデプロイ自体には影響させない。
+func (h *Handler) notify(res DeployResult, repo *Repository) {
+	if h.notifier == nil {
 		return
 	}
-	log.Printf("%s: デプロイ完了", repo.Name)
+	nc := h.cfg.notifyFor(repo)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := h.notifier.Notify(ctx, nc, res); err != nil {
+		log.Printf("%s: 通知の送信に失敗しました: %v", repo.Name, err)
+	}
 }
 
 // validSignature はGitHubのX-Hub-Signature-256を検証する。

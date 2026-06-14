@@ -9,6 +9,7 @@ A single-binary tool that receives GitHub push events via webhook, pulls the tar
 - Verifies signatures with `X-Hub-Signature-256` (HMAC-SHA256)
 - Per-repository mutex prevents overlapping deploys
 - Responds with `202` immediately to avoid GitHub's 10-second timeout, then deploys asynchronously
+- Optional deploy-result notifications to a Slack Incoming Webhook
 
 ## Build
 
@@ -41,6 +42,27 @@ repositories:
 ```
 
 The following environment variables are available inside deploy commands: `FAD_REPO` / `FAD_BRANCH` / `FAD_COMMIT`.
+
+## Notifications (optional)
+
+Send deploy results to a [Slack Incoming Webhook](https://api.slack.com/messaging/webhooks). This is entirely optional — omit the `notify` block to disable it.
+
+```yaml
+# Global default (applies to all repositories)
+notify:
+  slack_webhook: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+  on: "always"   # "always" = both success and failure, "failure" = failures only
+
+repositories:
+  - name: "owner/repo"
+    # ...
+    # Per-repository override (e.g. a different channel, failures only)
+    notify:
+      slack_webhook: "https://hooks.slack.com/services/AAA/BBB/CCC"
+      on: "failure"
+```
+
+A repository's `notify` block fully overrides the global one. The message includes the repository, branch, commit, duration, and — on failure — the error output. Notification errors are logged but never affect the deploy itself.
 
 ## Running
 

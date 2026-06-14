@@ -17,9 +17,24 @@ type Config struct {
 	Path string `yaml:"path"`
 	// LogFile は指定するとstdoutに加えてファイルにも追記する（任意）。
 	LogFile string `yaml:"log_file"`
+	// Notify はデプロイ結果通知の既定設定（任意）。リポジトリ側で上書き可能。
+	Notify *NotifyConfig `yaml:"notify"`
 	// Repositories は対象リポジトリの一覧。
 	Repositories []*Repository `yaml:"repositories"`
 }
+
+// NotifyConfig はデプロイ結果通知の設定（任意機能）。
+type NotifyConfig struct {
+	// SlackWebhook はSlack Incoming WebhookのURL。空なら通知しない。
+	SlackWebhook string `yaml:"slack_webhook"`
+	// On は通知タイミング。"always"（既定）= 成功/失敗とも、"failure" = 失敗時のみ。
+	On string `yaml:"on"`
+}
+
+const (
+	notifyAlways  = "always"
+	notifyFailure = "failure"
+)
 
 // Repository は1リポジトリ分のデプロイ設定。
 type Repository struct {
@@ -35,6 +50,8 @@ type Repository struct {
 	Deploy []string `yaml:"deploy"`
 	// Timeout はデプロイ全体のタイムアウト。0なら無制限。
 	Timeout time.Duration `yaml:"timeout"`
+	// Notify はこのリポジトリ専用の通知設定（任意）。指定するとグローバルのnotifyを上書きする。
+	Notify *NotifyConfig `yaml:"notify"`
 }
 
 // LoadConfig は設定ファイルを読み込み検証する。
@@ -79,9 +96,29 @@ func LoadConfig(path string) (*Config, error) {
 		if len(r.Deploy) == 0 {
 			return nil, fmt.Errorf("%s: deploy コマンドが空です", r.Name)
 		}
+		if err := normalizeNotify(r.Notify); err != nil {
+			return nil, fmt.Errorf("%s: notify: %w", r.Name, err)
+		}
+	}
+	if err := normalizeNotify(cfg.Notify); err != nil {
+		return nil, fmt.Errorf("notify: %w", err)
 	}
 
 	return &cfg, nil
+}
+
+// normalizeNotify はNotifyConfigの既定値補完と検証を行う。nilは何もしない。
+func normalizeNotify(n *NotifyConfig) error {
+	if n == nil {
+		return nil
+	}
+	if n.On == "" {
+		n.On = notifyAlways
+	}
+	if n.On != notifyAlways && n.On != notifyFailure {
+		return fmt.Errorf("on は %q または %q を指定してください（指定値: %q）", notifyAlways, notifyFailure, n.On)
+	}
+	return nil
 }
 
 // find はフルネームから該当リポジトリ設定を返す。
@@ -92,4 +129,13 @@ func (c *Config) find(fullName string) *Repository {
 		}
 	}
 	return nil
+}
+
+// notifyFor はリポジトリに適用する通知設定を返す。
+// リポジトリ固有設定があればそれを、無ければグローバル設定を使う。
+func (c *Config) notifyFor(r *Repository) *NotifyConfig {
+	if r.Notify != nil {
+		return r.Notify
+	}
+	return c.Notify
 }

@@ -5,6 +5,11 @@ listen: ":9000"      # 待受アドレス
 path: "/webhook"      # webhookを受け付けるパス
 log_file: "/var/log/fetchanddeploy.log"  # 任意。空ならstdoutのみ
 
+# デプロイ結果通知（任意）。リポジトリ側で上書き可能。不要なら丸ごと削除。
+notify:
+  slack_webhook: "https://hooks.slack.com/services/XXX/YYY/ZZZ"  # 空なら通知しない
+  on: "always"   # always = 成功/失敗とも通知, failure = 失敗時のみ
+
 repositories:
   - name: "koh-yoshimoto/myapp"   # GitHubのリポジトリフルネーム（owner/repo）
     branch: "main"                  # 反応するブランチ。空なら全ブランチ
@@ -20,6 +25,10 @@ repositories:
     branch: "production"
     path: "/srv/another"
     secret: "別のSecret"
+    # このリポジトリだけ別チャンネル・失敗時のみ通知（グローバルのnotifyを上書き）
+    notify:
+      slack_webhook: "https://hooks.slack.com/services/AAA/BBB/CCC"
+      on: "failure"
     deploy:
       - "git pull --ff-only"
       - "make deploy"

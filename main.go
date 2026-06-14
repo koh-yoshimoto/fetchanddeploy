@@ -34,7 +34,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle(cfg.Path, NewHandler(cfg, NewDeployer()))
+	mux.Handle(cfg.Path, NewHandler(cfg, NewDeployer(), NewNotifier()))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "ok")
 	})

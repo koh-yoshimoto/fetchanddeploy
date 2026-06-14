@@ -23,7 +23,7 @@ func sign(body []byte, secret string) string {
 func newTestHandler(t *testing.T, repo *Repository) *Handler {
 	t.Helper()
 	cfg := &Config{Path: "/webhook", Repositories: []*Repository{repo}}
-	return NewHandler(cfg, NewDeployer())
+	return NewHandler(cfg, NewDeployer(), NewNotifier())
 }
 
 func post(h *Handler, event string, body []byte, sig string) *httptest.ResponseRecorder {
